@@ -4,11 +4,34 @@
 #include <iostream>
 #include <cmath>
 
+#include <chrono>
+
 
 
 template <typename T> void Print(T data, std::string end="\n") { if (end=="\n") { std::cout<<data<<std::endl; } else { std::cout<<data<<end; } }
 
+class Timer
+{
 
+private:
+
+    std::chrono::high_resolution_clock::time_point dt = std::chrono::high_resolution_clock::now();
+
+public:
+
+    double delta;
+
+
+
+    double Tick()
+    {
+        std::chrono::high_resolution_clock::time_point now = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(now - dt);
+        dt = now;
+        delta = elapsed_time.count();
+        return delta;
+    }
+};
 
 class Parser
 {
@@ -35,7 +58,9 @@ public:
 
     std::string SolveProblem(std::string op, std::string A, std::string B)
     {
-        if (show_work) { Print(A+" "+op+" "+B); }
+        try
+        {
+        if (show_work) { Print(op+" "+A+" "+op+" "+B+"\n"); }
         double a=std::stod(A), b=std::stod(B);
         float c=0.0;
         if      (op=="^") { c=pow(a,b);}
@@ -44,6 +69,8 @@ public:
         else if (op=="+") { c=    a+b; }
         else if (op=="-") { c=    a-b; }
         return std::to_string(c);
+        }
+        catch (std::invalid_argument) { return ""; }
     }
 
     std::vector<std::string> SolveExpression(std::vector<std::string> tokens)
@@ -67,8 +94,12 @@ public:
             std::string A = tokens[operation_index-1];
             std::string B = tokens[operation_index+1];
             std::string result = SolveProblem(tokens[operation_index], A, B);
-            for (int i=0; i<3; i++) { tokens.erase(tokens.begin()+cull); }
-            tokens.insert(tokens.begin()+cull, result);
+            if (result.size()>0)
+            {
+                for (int i=0; i<3; i++) { tokens.erase(tokens.begin()+cull); }
+                tokens.insert(tokens.begin()+cull, result);
+            }
+            else { return Error("Mangled Expression", "Parser"); }
         }
         else { state++; }
         return tokens;
@@ -94,7 +125,7 @@ public:
                 else if (c=='/') { can_push = true; glyph = "/"; }
                 else if (c=='+') { can_push = true; glyph = "+"; }
                 else if (c=='-') { can_push = true; glyph = "-"; }
-                else { if (c!=' ') { token+=c; } }
+                else { if ((c>='0' && c<='9') || c=='.') { token+=c; } }
                 if (can_push)
                 {
                     if (token.size()>0)
@@ -122,13 +153,12 @@ public:
         while (true)
         {
             bool found_negative = false;
-            std::string _t=""; token="";
             for (int i=0; i<tokens.size(); i++)
             {
-                token=tokens[i];
+                std::string token=tokens[i];
                 if (i>0 && i<tokens.size())
                 {
-                    _t=tokens[i-1];
+                    std::string _t=tokens[i-1];
                     if (token=="-")
                     {
                         if (_t=="(" || _t==")" || _t=="^" || _t=="*" || _t=="/" || _t=="+" || _t=="-" || _t==".")
@@ -152,21 +182,26 @@ public:
         {
             if      (tokens[i]=="(") { L++; }
             else if (tokens[i]==")") { R++; }
-            else if (tokens[i]=="^") { O++; }
-            else if (tokens[i]=="*") { O++; }
-            else if (tokens[i]=="/") { O++; }
-            else if (tokens[i]=="+") { O++; }
-            else if (tokens[i]=="-") { O++; }
-            else if (IsNumber(tokens[i])) { N++; }
+            //else if (tokens[i]=="^") { O++; }
+            //else if (tokens[i]=="*") { O++; }
+            //else if (tokens[i]=="/") { O++; }
+            //else if (tokens[i]=="+") { O++; }
+            //else if (tokens[i]=="-") { O++; }
+            //else if (IsNumber(tokens[i])) { N++; }
         }
-        if (L!=R) { return Error("Mismatched Parentheses", "Parentheses"); }
-        if (O>=N) { return Error("Invalid Expression", "Expression"); }
+        std::string _L = " [Left="+std::to_string(L);
+        std::string _R = " Right="+std::to_string(R)+"]";
+        //std::string _O = " [Operators="+std::to_string(O);
+        //std::string _N = " Numbers="+std::to_string(N)+"]";
+        if (L!=R) { std::string error="Mismatched Parentheses"+_L+_R; return Error(error, "Parentheses"); }
+        //if (O>=N) { std::string error="Invalid Expression"+_O+_N; return Error(error, "Expression"); PrintTokens(tokens); }
         return tokens;
     }
 
     std::vector<std::string> ParseParentheses(std::vector<std::string> tokens)
     {
         tokens = ParseErrors(tokens);
+        if (tokens.size()==0) { return Error("No Input", "User"); }
         int _count = 2;
         while(_count>0)
         {
@@ -192,8 +227,8 @@ public:
         std::vector<std::string> tokens = Tokenize(data), problem = ParseParentheses(tokens);
         if (problem.size()==1) { return problem[0]; }
         else { state=1; tokens = problem; }
-        std::string result = "";
-        while(tokens.size()>1) { if (show_work) { PrintTokens(tokens); } tokens = SolveExpression(tokens); }
+        std::string result = ""; int last_size=tokens.size();
+        while(tokens.size()>1) { if (show_work && tokens.size()!=last_size) { PrintTokens(tokens); } tokens = SolveExpression(tokens); last_size=tokens.size(); }
         result = tokens[0];
         return result;
     }
@@ -205,15 +240,23 @@ public:
 int main(int argc, char *argv[])
 {
     Parser parser = Parser();
+    Timer timer = Timer();
     std::string expression = "";
-    if (argc>1) { for (int i=1; i<argc; i++) { expression += argv[i]; } Print(parser.Parse(expression)); }
+    if (argc>1)
+    {
+        for (int i=1; i<argc; i++) { expression += argv[i]; }
+        timer.Tick(); Print("= "+parser.Parse(expression));
+        float delta = timer.Tick(); Print("Took:", " "); Print(delta); Print("");
+    }
     else
     {
         bool user_engaged = true; while (user_engaged)
         {
             Print("Enter an expression to solve, 'x' to exit, or 's' to toggle showing work");
             for (int i=0; i<4; i++) { Print(""); } expression = ""; std::getline(std::cin, expression);
-            if (expression=="x") { user_engaged=false; return 0; } else if (expression=="s") { parser.ToggleShowWork(); } else { Print(parser.Parse(expression)); }
+            if (expression=="x") { user_engaged=false; return 0; }
+            else if (expression=="s") { parser.ToggleShowWork(); }
+            else { timer.Tick(); Print("= "+parser.Parse(expression)); float delta = timer.Tick(); Print("Took:", " "); Print(delta); Print(""); }
         }
     }
     return 0;
