@@ -50,10 +50,17 @@ private:
 
     enum STATES { PAR, EXP, MUL, DIV, ADD, SUB };
     std::vector<std::string> symbols = { "()","^","*","/","+","-","P" };
+    std::string tab_spacing="  ";
     int state = 1;
     bool show_work = true;
+    bool show_expression = false;
 
 public:
+
+    std::string GetTabSpacing()
+    {
+        return tab_spacing;
+    }
 
     bool IsNumber(std::string data)
     {
@@ -75,6 +82,34 @@ public:
             return false;
         }
         return true;
+    }
+
+    bool IsNegativeNumber(std::string data)
+    {
+        int dc = 0;
+        if (data[0]!='-') { return false; }
+        for (int i=0; i<data.size(); i++)
+        {
+            char c = data.at(i);
+            if (c=='.')
+            {
+                dc++;
+            }
+            if ((c<'0' || c>'9') && c!='.')
+            {
+                return false;
+            }
+        }
+        if (dc>1)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    bool IsValidNumber(std::string data)
+    {
+        return (IsNumber(data) || IsNegativeNumber(data));
     }
 
     bool IsOperation(std::string data)
@@ -102,6 +137,7 @@ public:
     void ToggleShowWork()
     {
         show_work=!show_work;
+        show_expression=!show_work;
     }
 
     std::vector<std::string> Error(std::string text, std::string type)
@@ -111,38 +147,126 @@ public:
 
     void PrintTokens(std::vector<std::string> tokens)
     {
-        Print(symbols[state], " ");
+        Print(symbols[state], tab_spacing);
         for (int i=0; i<tokens.size(); i++)
         {
-            Print(tokens[i], "");
+            Print(tokens[i], " ");
         }
         Print("");
     }
 
+    std::string RandomExpression()
+    {
+        bool generating = true, can_finish = false;
+        int number_count = 0, limit=5;
+        std::string expression = "";
+        while (generating)
+        {
+            std::string token = "";
+            if (IsNumber(token)) { number_count++; }
+            if (number_count>=limit) { can_finish = true; }
+            expression += token;
+        }
+        return expression;
+    }
 
+    std::string GetNumberString(std::string A)
+    {
+        int decimal=A.size();
+        for (int i=0; i<A.size(); i++) { if (A[i]=='.') { decimal=i; break; } }
+        while(A[A.size()-1]=='0' && A.size()>decimal)
+        {
+            A=A.substr(0, A.size()-1);
+        }
+        if (A[A.size()-1]=='.')
+        {
+            A=A.substr(0, A.size()-1);
+        }
+        return A;
+    }
+
+    void PrintProblem(std::string op, std::string A, std::string B, std::string C)
+    {
+        A=GetNumberString(A);
+        B=GetNumberString(B);
+        C=GetNumberString(C);
+        const int maximum = std::max(std::max(std::max(A.size(), B.size()+1), C.size()), (const long unsigned int) 8);
+        std::string a_ = "";
+        std::string b_ = "";
+        std::string c_ = "";
+        std::string separator = "";
+        for (int i=A.size(); i<maximum; i++) { a_+=" "; }
+        for (int i=B.size()+1; i<maximum; i++) { b_+=" "; }
+        for (int i=C.size(); i<maximum; i++) { c_+=" "; }
+        for (int i=0; i<maximum; i++) { separator+="_"; }
+        Print(a_+A);
+        Print(op+b_+B);
+        Print(separator);
+        Print(c_+C);
+    }
+
+
+
+    std::string SolveUnary(std::string op, std::string A)
+    {
+        std::string work = op+tab_spacing+op+" "+GetNumberString(A);
+        if (op=="-")
+        {
+            if (show_work)
+            {
+                try
+                {
+                    Print(work+" = "+GetNumberString(std::to_string(std::stod(A)*-1.0))); return std::to_string(std::stod(A)*-1.0);
+                }
+                catch (std::invalid_argument) { return "Error"; }
+            }
+        }
+        return A;
+    }
 
     std::string SolveProblem(std::string op, std::string A, std::string B)
     {
+        if (A.size()>2) { if (A[0]=='-' && A[1]=='-') { A=A.substr(2, A.size()-3); } }
+        if (B.size()>2) { if (B[0]=='-' && B[1]=='-') { B=B.substr(2, B.size()-3); } }
+        double a, b;
         try
         {
-            if (show_work) { Print(op+" "+A+" "+op+" "+B+"\n"); }
-            double a=std::stod(A), b=std::stod(B);
-            float c=0.0;
-            if      (op=="^") { c=pow(a,b);}
-            else if (op=="*") { c=    a*b; }
-            else if (op=="/") { c=    a/b; }
-            else if (op=="+") { c=    a+b; }
-            else if (op=="-") { c=    a-b; }
-            return std::to_string(c);
+            a=std::stod(A);
+            b=std::stod(B);
         }
         catch (std::invalid_argument)
         {
-            return "";
+            return SolveUnary(op, A);
+            //return "Error";
         }
+        float c=0.0;
+        if      (op=="^") { c=pow(a,b);}
+        else if (op=="*") { c=    a*b; }
+        else if (op=="/") { c=    a/b; }
+        else if (op=="+") { c=    a+b; }
+        else if (op=="-") { c=    a-b; }
+        if (show_work) { PrintProblem(op, A, B, std::to_string(c)); }
+        return std::to_string(c);
     }
 
     std::vector<std::string> SolveExpression(std::vector<std::string> tokens)
     {
+        if (tokens.size()==2)
+        {
+            tokens = {SolveUnary(tokens[0], tokens[1])};
+        }
+        else if (tokens.size()%2==0)
+        {
+            if (tokens.size()>1)
+            {
+                if (tokens[0]=="-" && IsValidNumber(tokens[1]))
+                {
+                    tokens.erase(tokens.begin());
+                    tokens[0]=std::to_string(std::stod(tokens[0])*-1.0);
+                }
+            }
+            //return tokens;
+        }
         int operation_index = -1;
         std::string op = symbols[state];
         for (int i=0; i<tokens.size(); i++)
@@ -159,20 +283,29 @@ public:
         if (operation_index>-1)
         {
             int cull = operation_index-1;
-            std::string A = tokens[operation_index-1];
-            std::string B = tokens[operation_index+1];
-            std::string result = SolveProblem(tokens[operation_index], A, B);
-            if (result.size()>0)
+            std::string result;
+            try
+            {
+                std::string A = tokens[operation_index-1];
+                std::string B = tokens[operation_index+1];
+                result = SolveProblem(tokens[operation_index], A, B);
+            }
+            catch (std::length_error) { result="Length"; }
+            if (result=="Error")
+            {
+                return Error("Mangled Expression", "Problem");
+            }
+            else if (result=="Length")
+            {
+                return Error("Mangled Expression", "Expression");
+            }
+            else
             {
                 for (int i=0; i<3; i++)
                 {
                     tokens.erase(tokens.begin()+cull);
                 }
                 tokens.insert(tokens.begin()+cull, result);
-            }
-            else
-            {
-                return Error("Mangled Expression", "Parser");
             }
         }
         else
@@ -248,6 +381,9 @@ public:
 
     std::vector<std::string> ParseNegatives(std::vector<std::string> tokens)
     {
+        bool can_continue = false; std::string last = "";
+        for (int i=0; i<tokens.size(); i++) { if (tokens[i]=="-" || tokens[i]=="-(") { if (last=="-" || last=="-(") { can_continue = true; } last = tokens[i]; } }
+        if (!can_continue) { return tokens; }
         std::string token = "";
         while (true)
         {
@@ -258,9 +394,10 @@ public:
                 if (i>0 && i<tokens.size())
                 {
                     std::string _t=tokens[i-1];
+                    std::string t_=tokens[i+1];
                     if (token=="-")
                     {
-                        if (_t=="^" || _t=="*" || _t=="/" || _t=="+" || _t=="-" || _t==".")
+                        if (_t=="(" || _t=="^" || _t=="*" || _t=="/" || _t=="+" || _t=="-" || _t==".")
                         {
                             found_negative = true;
                             std::string n = tokens[i]+tokens[i+1];
@@ -281,6 +418,26 @@ public:
                 }
             }
             if (!found_negative) { break; }
+        }
+        while (true)
+        {
+            int cull = -1;
+            for (int i=0; i<tokens.size(); i++)
+            {
+                if (tokens[i]=="-(")
+                {
+                    cull=i;
+                }
+            }
+            if (cull>-1)
+            {
+                tokens[cull] = "-";
+                tokens.insert(tokens.begin()+cull+1, "(");
+            }
+            else
+            {
+                break;
+            }
         }
         return tokens;
     }
@@ -314,7 +471,7 @@ public:
         while(_count>0)
         {
             state=6;
-            if (show_work)
+            if (show_expression)
             {
                 PrintTokens(tokens);
             }
@@ -355,15 +512,20 @@ public:
                 }
                 tokens.erase(tokens.begin()+li);
             }
+            bool has_neg = false;
+            for (int i=0; i<expression.size(); i++) { if (expression[i]=="-") { has_neg = true; } }
+            if (has_neg) { expression = ParseNegatives(expression); }
             while (expression.size()>1)
             {
                 expression=SolveExpression(expression);
+                //if (tokens.size()==1) { return tokens; }
             }
             if (expression.size()>0)
             {
                 tokens.insert(tokens.begin()+li, expression[0]);
-            }//lc--; rc--; }
+            }
             _count=lc+rc;
+            if (tokens.size()==1) { return tokens; }
         }
         return tokens;
     }
@@ -412,8 +574,8 @@ int main(int argc, char *argv[])
             expression += argv[i];
         }
         timer.Tick();
-        Print("= "+parser.Parse(expression));
-        Print("Took:", " ");
+        Print("\n="+parser.GetTabSpacing()+parser.GetNumberString(parser.Parse(expression)));
+        Print("\nTook:", " ");
         Print(timer.Tick());
         Print("");
     }
@@ -439,8 +601,8 @@ int main(int argc, char *argv[])
             else
             {
                 timer.Tick();
-                Print("= "+parser.Parse(expression));
-                Print("Took:", " ");
+                Print("\n="+parser.GetTabSpacing()+parser.GetNumberString(parser.Parse(expression)));
+                Print("\nTook:", " ");
                 Print(timer.Tick());
                 Print("");
             }
